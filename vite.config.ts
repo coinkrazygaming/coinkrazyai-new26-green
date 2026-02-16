@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     fs: {
-      allow: ["./client", "./shared"],
+      allow: [".", "./client", "./shared"],
       deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "server/**"],
     },
   },
@@ -34,11 +34,19 @@ function expressPlugin(): Plugin {
       const app = createServer();
 
       if (server.httpServer) {
-        setupSocketIO(server.httpServer);
+        setupSocketIO(server.httpServer as any);
       }
 
-      // Add Express app as middleware to Vite dev server
-      server.middlewares.use(app);
+      // Add middleware that runs BEFORE SPA handler to intercept /api routes
+      server.middlewares.use((req, res, next) => {
+        console.log(`[ViteProxy] Checking URL: ${req.url}`);
+        if (req.url && req.url.startsWith('/api/')) {
+          console.log(`[ViteProxy] Intercepting: ${req.url}`);
+          app(req, res);
+        } else {
+          next();
+        }
+      });
     },
   };
 }

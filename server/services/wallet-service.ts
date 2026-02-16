@@ -1,34 +1,34 @@
 import { Wallet } from "@shared/api";
 import { emitWalletUpdate } from "../socket";
 
-// In-memory wallet storage for demo
-const userWallets: Record<string, Wallet> = {
-  'default-user': {
-    goldCoins: 10000,
-    sweepsCoins: 50.0
-  }
-};
-
+/**
+ * WalletService is now a utility service for wallet operations and socket emissions.
+ * The primary wallet data is stored in the database and managed through db/queries.ts
+ * This service handles real-time notifications and socket emissions only.
+ */
 export class WalletService {
-  static getWallet(userId: string): Wallet {
-    if (!userWallets[userId]) {
-      userWallets[userId] = { goldCoins: 1000, sweepsCoins: 0 };
-    }
-    return userWallets[userId];
+  /**
+   * Emit a wallet update via Socket.IO to notify connected clients of balance changes
+   * @param userId The player ID
+   * @param wallet The updated wallet data
+   */
+  static notifyWalletUpdate(userId: string | number, wallet: Wallet): void {
+    emitWalletUpdate(userId.toString(), {
+      goldCoins: wallet.goldCoins,
+      sweepsCoins: wallet.sweepsCoins,
+      lastUpdated: new Date().toISOString()
+    });
   }
 
-  static async updateBalance(userId: string, currency: 'GC' | 'SC', amount: number): Promise<Wallet> {
-    const wallet = this.getWallet(userId);
-    
-    if (currency === 'GC') {
-      wallet.goldCoins += amount;
-    } else {
-      wallet.sweepsCoins += amount;
-    }
-
-    // Emit real-time update via Socket.IO
-    emitWalletUpdate(userId, wallet);
-    
-    return wallet;
+  /**
+   * Broadcast wallet update to all connected clients
+   * @param wallet The wallet data to broadcast
+   */
+  static broadcastWalletUpdate(wallet: Wallet): void {
+    emitWalletUpdate('broadcast', {
+      goldCoins: wallet.goldCoins,
+      sweepsCoins: wallet.sweepsCoins,
+      lastUpdated: new Date().toISOString()
+    });
   }
 }

@@ -1,205 +1,176 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/lib/auth-context';
+import { sportsbook } from '@/lib/api';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, TrendingUp, Search, Ticket, Zap, Info } from 'lucide-react';
-import { useWallet } from '@/hooks/use-wallet';
-import { toast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { Loader2, TrendingUp } from 'lucide-react';
+import { toast } from 'sonner';
+import { SportsEvent } from '@shared/api';
+import { MIN_BET_SC, MAX_BET_SC } from '@shared/constants';
 
 const Sportsbook = () => {
-  const [games, setGames] = useState<any[]>([]);
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const navigate = useNavigate();
+  const [events, setEvents] = useState<SportsEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [betSlip, setBetSlip] = useState<any[]>([]);
-  const [wager, setWager] = useState(10);
-  const { wallet, currency } = useWallet();
+  const [betAmount, setBetAmount] = useState(0);
+  const [selectedEvent, setSelectedEvent] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('/api/sportsbook/games')
-      .then(res => res.json())
-      .then(res => {
-        if (res.success) setGames(res.data);
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  const addToSlip = (game: any, pick: string) => {
-    if (betSlip.find(p => p.gameId === game.id)) {
-      setBetSlip(betSlip.map(p => p.gameId === game.id ? { ...p, pick } : p));
-    } else {
-      setBetSlip([...betSlip, { gameId: game.id, game, pick }]);
-    }
-  };
-
-  const handlePlaceBet = async () => {
-    if (currency !== 'SC') {
-      toast({ title: "SC Only", description: "Sportsbook betting is exclusive to Sweeps Coins.", variant: "destructive" });
-      return;
-    }
-    
-    if (betSlip.length < 3) {
-      toast({ title: "Parlay Required", description: "Minimum 3 picks for a parlay bet.", variant: "destructive" });
+    if (!authLoading && !isAuthenticated) {
+      navigate('/login');
       return;
     }
 
-    const res = await fetch('/api/sportsbook/parlay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ picks: betSlip, bet: wager })
-    });
-    const data = await res.json();
-    
-    if (data.success) {
-      toast({ title: "Bet Placed!", description: `Potential Payout: ${data.data.potentialPayout} SC` });
-      setBetSlip([]);
+    const fetchEvents = async () => {
+      try {
+        const response = await sportsbook.getLiveGames();
+        setEvents(response.data || []);
+      } catch (error: any) {
+        console.error('Failed to fetch events:', error);
+        toast.error('Failed to load sports events');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchEvents();
+    }
+  }, [isAuthenticated, authLoading, navigate]);
+
+  const handlePlaceBet = async (eventId: number, odds: number) => {
+    if (betAmount < MIN_BET_SC) {
+      toast.error(`Bet amount must be at least ${MIN_BET_SC} SC`);
+      return;
+    }
+
+    if (betAmount > MAX_BET_SC) {
+      toast.error(`Bet amount cannot exceed ${MAX_BET_SC} SC`);
+      return;
+    }
+
+    if (Number(user?.sc_balance || 0) < betAmount) {
+      toast.error('Insufficient balance');
+      return;
+    }
+
+    try {
+      await sportsbook.placeBet(eventId, betAmount, odds);
+      toast.success('Bet placed successfully!');
+      setSelectedEvent(null);
+      setBetAmount(0);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to place bet');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <Badge className="bg-primary/20 text-primary border-none">
-            <TrendingUp className="w-3 h-3 mr-1" /> Live Odds Powered by KrazyAI
-          </Badge>
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter">SPORTS<span className="text-primary">BOOK</span></h1>
-          <p className="text-muted-foreground font-medium text-lg">SC-only parlay bets. Live spreads and live lines.</p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-4xl font-black tracking-tight">SPORTSBOOK</h1>
+        <p className="text-muted-foreground">Live odds and parlay betting on all major sports</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Main Feed */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-            {['All Sports', 'NFL', 'NBA', 'MLB', 'NHL', 'Soccer', 'Tennis'].map(sport => (
-              <Button key={sport} variant="outline" size="sm" className="rounded-full whitespace-nowrap px-6 font-bold">
-                {sport}
-              </Button>
-            ))}
-          </div>
-
-          <div className="space-y-4">
-            {isLoading ? (
-              [1, 2, 3].map(i => <div key={i} className="h-40 bg-muted animate-pulse rounded-3xl" />)
-            ) : (
-              games.map((game) => (
-                <Card key={game.id} className="border-border/50 bg-muted/20 overflow-hidden">
-                  <div className="bg-muted/50 px-6 py-2 flex justify-between items-center border-b border-border/50">
-                    <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">{game.sport} • {game.time}</span>
-                    <Badge variant="outline" className="text-[10px] font-bold text-primary animate-pulse">LIVE</Badge>
-                  </div>
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                          <span className="font-black text-xl">{game.homeTeam}</span>
-                          <span className="font-mono text-muted-foreground">0</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-black text-xl">{game.awayTeam}</span>
-                          <span className="font-mono text-muted-foreground">0</span>
-                        </div>
-                      </div>
-
-                      <div className="col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase text-center">Spread</p>
-                          <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'home-spread')} className="font-mono">{game.spread}</Button>
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'away-spread')} className="font-mono">+{game.spread.replace('-', '')}</Button>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase text-center">Over/Under</p>
-                          <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'over')} className="font-mono">O {game.overUnder}</Button>
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'under')} className="font-mono">U {game.overUnder}</Button>
-                          </div>
-                        </div>
-                        <div className="space-y-1 hidden sm:block">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase text-center">Moneyline</p>
-                          <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'home-ml')} className="font-mono">-110</Button>
-                            <Button variant="outline" size="sm" onClick={() => addToSlip(game, 'away-ml')} className="font-mono">+110</Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Bet Slip */}
-        <div className="space-y-6">
-          <Card className="border-primary/20 sticky top-24">
-            <CardHeader className="bg-primary/5">
-              <CardTitle className="flex items-center gap-2">
-                <Ticket className="w-5 h-5 text-primary" />
-                BET SLIP
-              </CardTitle>
-              <CardDescription className="text-xs">Minimum 3 picks for Parlay</CardDescription>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {events.map(event => (
+          <Card key={event.id} className="hover:border-primary transition-colors">
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <Badge variant="outline" className="mb-2">{event.sport}</Badge>
+                  <CardTitle className="text-lg">{event.event_name}</CardTitle>
+                </div>
+                <Badge variant={event.status === 'Live' ? 'default' : 'secondary'} className="whitespace-nowrap">
+                  {event.status === 'Live' && <span className="animate-pulse mr-1">🔴</span>}
+                  {event.status}
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="p-4 space-y-3 min-h-[100px]">
-                {betSlip.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center py-8">
-                    <p className="text-sm text-muted-foreground">No picks selected.</p>
-                    <p className="text-xs text-muted-foreground italic">Add 3 or more picks to place a parlay.</p>
+            <CardContent className="space-y-4">
+              <div className="space-y-2 text-sm">
+                {event.total_bets && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total Bets</span>
+                    <span className="font-bold">${Number(event.total_bets ?? 0).toLocaleString()}</span>
                   </div>
-                ) : (
-                  betSlip.map((pick, i) => (
-                    <div key={i} className="bg-muted/50 p-3 rounded-xl border border-border flex justify-between items-start group">
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-primary uppercase">{pick.pick.replace('-', ' ')}</p>
-                        <p className="text-sm font-black">{pick.game.homeTeam} vs {pick.game.awayTeam}</p>
-                      </div>
-                      <button onClick={() => setBetSlip(betSlip.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive">
-                        <Zap className="w-3 h-3 fill-current" />
-                      </button>
-                    </div>
-                  ))
+                )}
+                {event.line_movement && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <TrendingUp className="w-4 h-4" />
+                      Line
+                    </span>
+                    <span className="font-bold">{event.line_movement}</span>
+                  </div>
                 )}
               </div>
 
-              {betSlip.length > 0 && (
-                <div className="p-4 bg-muted border-t border-border space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold">Wager (SC)</span>
-                    <input 
-                      type="number" 
-                      value={wager}
-                      onChange={(e) => setWager(Number(e.target.value))}
-                      className="w-20 bg-background border border-border rounded text-right px-2 font-mono font-bold"
-                    />
-                  </div>
-                  <div className="flex justify-between items-center text-primary">
-                    <span className="text-sm font-bold italic">Potential Payout</span>
-                    <span className="text-xl font-black">{(wager * (betSlip.length * 2.5)).toFixed(2)} SC</span>
-                  </div>
-                  <Button onClick={handlePlaceBet} className="w-full h-12 font-black italic tracking-widest">PLACE PARLAY BET</Button>
+              {selectedEvent === event.id ? (
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    min={MIN_BET_SC}
+                    max={MAX_BET_SC}
+                    step="0.01"
+                    value={betAmount}
+                    onChange={(e) => setBetAmount(Number(e.target.value))}
+                    placeholder="Bet amount"
+                    className="w-full px-2 py-1 border rounded text-sm"
+                  />
+                  <Button
+                    onClick={() => handlePlaceBet(event.id, event.odds || 1.5)}
+                    size="sm"
+                    className="w-full"
+                  >
+                    Place Bet
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSelectedEvent(null);
+                      setBetAmount(0);
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
                 </div>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setSelectedEvent(event.id);
+                    setBetAmount(MAX_BET_SC);
+                  }}
+                  className="w-full"
+                  disabled={event.locked}
+                >
+                  {event.locked ? 'Event Locked' : 'Place Bet'}
+                </Button>
               )}
             </CardContent>
           </Card>
-
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                <Info className="w-4 h-4" /> Sportsbook Rules
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-[10px] text-muted-foreground space-y-2">
-              <p>• All bets are SC-only.</p>
-              <p>• Minimum 3 legs for any parlay.</p>
-              <p>• Odds are subject to change until bet is placed.</p>
-              <p>• Max payout: 10,000 SC per bet.</p>
-            </CardContent>
-          </Card>
-        </div>
+        ))}
       </div>
+
+      {events.length === 0 && (
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="text-muted-foreground">No live events at the moment</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

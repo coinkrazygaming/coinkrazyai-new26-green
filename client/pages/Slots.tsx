@@ -1,198 +1,209 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/lib/auth-context';
+import { useGames } from '@/lib/hooks';
+import { GameCard } from '@/components/casino/GameCard';
+import { GamePopup } from '@/components/casino/GamePopup';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useWallet } from '@/hooks/use-wallet';
-import { toast } from '@/hooks/use-toast';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Coins, Trophy, Info } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { CoinAnimation } from '@/components/CoinAnimation';
+import { Search, Filter, Loader2 } from 'lucide-react';
 
-const SYMBOL_MAP: Record<string, string> = {
-  cherry: '🍒',
-  lemon: '🍋',
-  orange: '🍊',
-  plum: '🍇',
-  bell: '🔔',
-  diamond: '💎',
-  seven: '7️⃣'
-};
+export default function Slots() {
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterProvider, setFilterProvider] = useState<string | null>(null);
+  const [showUpcoming, setShowUpcoming] = useState(false);
+  const { user, isLoading: authLoading } = useAuth();
+  const { data: allGames = [], isLoading: gamesLoading } = useGames();
+  const navigate = useNavigate();
 
-const Slots = () => {
-  const { wallet, currency } = useWallet();
-  const [bet, setBet] = useState(10);
-  const [isSpinning, setIsSpinning] = useState(false);
-  const [reels, setReels] = useState([
-    ['cherry', 'lemon', 'orange'],
-    ['bell', 'seven', 'diamond'],
-    ['plum', 'cherry', 'bell']
-  ]);
-  const [winnings, setWinnings] = useState(0);
-  const [showWinAnimation, setShowWinAnimation] = useState(false);
-
-  const handleSpin = async () => {
-    if (isSpinning) return;
-    
-    // Check balance
-    const balance = currency === 'GC' ? wallet?.goldCoins : wallet?.sweepsCoins;
-    if (!balance || balance < bet) {
-      toast({ title: "Insufficient Balance", description: `You need more ${currency} to play.`, variant: "destructive" });
-      return;
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login');
     }
+  }, [user, authLoading, navigate]);
 
-    setIsSpinning(true);
-    setWinnings(0);
-    setShowWinAnimation(false);
+  // Get all providers for filter
+  const providers = useMemo(() => {
+    if (!allGames || allGames.length === 0) return [];
+    return [...new Set(allGames.map(g => g.provider || '').filter(Boolean))].sort();
+  }, [allGames]);
 
-    try {
-      const res = await fetch('/api/slots/spin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bet, currency })
-      });
-      const data = await res.json();
+  // Filter games based on search and provider
+  const filteredGames = useMemo(() => {
+    if (!allGames) return [];
+    return allGames.filter(game => {
+      const title = game.title || '';
+      const provider = game.provider || '';
+      const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          provider.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesProvider = !filterProvider || provider === filterProvider;
+      return matchesSearch && matchesProvider;
+    });
+  }, [allGames, searchTerm, filterProvider]);
 
-      if (data.success) {
-        // Simulate reel spinning delay
-        setTimeout(() => {
-          setReels(data.data.reels);
-          setIsSpinning(false);
-          if (data.data.winnings > 0) {
-            setWinnings(data.data.winnings);
-            setShowWinAnimation(true);
-            toast({ 
-              title: "BIG WIN!", 
-              description: `You won ${data.data.winnings} ${currency}!`,
-              className: "bg-primary text-primary-foreground font-bold"
-            });
-          }
-        }, 1000);
+  // Group games by provider
+  const gamesByProvider = useMemo(() => {
+    if (!filteredGames || filteredGames.length === 0) return [];
+    const groups: Record<string, any[]> = {};
+    filteredGames.forEach(game => {
+      const provider = game.provider || 'Unknown';
+      if (!groups[provider]) {
+        groups[provider] = [];
       }
-    } catch (e) {
-      setIsSpinning(false);
-      toast({ title: "Error", description: "Spin failed. Try again.", variant: "destructive" });
-    }
-  };
+      groups[provider].push(game);
+    });
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredGames]);
+
+  if (authLoading || gamesLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <CoinAnimation trigger={showWinAnimation} />
-      
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="space-y-4">
         <div className="space-y-2">
-          <Badge className="bg-primary/20 text-primary border-none">
-            <Zap className="w-3 h-3 mr-1 fill-primary" /> SlotsAI RTP Active: 96.5%
-          </Badge>
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter italic">KRAZY <span className="text-primary">SEVENS</span></h1>
-          <p className="text-muted-foreground font-medium">Classic 3x3 Slots with AI-powered Jackpots.</p>
+          <h1 className="text-4xl font-bold text-white">Slot Games</h1>
+          <p className="text-gray-400">
+            Play our collection of {allGames.length} premium slot games with Sweeps Coins (SC)
+          </p>
         </div>
-        
-        <Card className="bg-muted/50 border-border p-4 flex gap-8">
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase">WINNINGS</p>
-            <p className="text-2xl font-black text-primary">+{winnings} {currency}</p>
+
+        {/* Wallet Display */}
+        <div className="bg-gradient-to-r from-amber-600/20 to-orange-600/20 border border-amber-500/30 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Your Sweeps Coins Balance</p>
+              <p className="text-3xl font-bold text-amber-400">
+                {Number(user.sc_balance || 0).toFixed(2)} SC
+              </p>
+            </div>
+            <div className="text-4xl">💰</div>
           </div>
-          <div className="border-l border-border pl-8">
-            <p className="text-xs font-bold text-muted-foreground uppercase">BALANCE</p>
-            <p className="text-2xl font-black">
-              {currency === 'GC' ? wallet?.goldCoins.toLocaleString() : wallet?.sweepsCoins.toFixed(2)}
-            </p>
-          </div>
-        </Card>
+        </div>
       </div>
 
-      {/* Slots Board */}
-      <div className="relative p-8 bg-gradient-to-b from-muted to-background rounded-3xl border-4 border-border shadow-2xl">
-        <div className="grid grid-cols-3 gap-4 h-64 md:h-80">
-          {reels.map((column, colIdx) => (
-            <div key={colIdx} className="bg-card border-2 border-border/50 rounded-2xl overflow-hidden relative flex flex-col justify-around">
-              <AnimatePresence mode="wait">
-                {column.map((symbol, rowIdx) => (
-                  <motion.div
-                    key={`${symbol}-${rowIdx}-${isSpinning}`}
-                    initial={isSpinning ? { y: -100, opacity: 0 } : { y: 0, opacity: 1 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: 100, opacity: 0 }}
-                    transition={{ 
-                      duration: 0.1, 
-                      repeat: isSpinning ? Infinity : 0,
-                      delay: colIdx * 0.1
-                    }}
-                    className="flex items-center justify-center text-5xl md:text-7xl"
-                  >
-                    {SYMBOL_MAP[symbol]}
-                  </motion.div>
+      {/* Search and Filters */}
+      <div className="space-y-4">
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Search games or providers..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <Filter className="h-5 w-5 text-gray-500" />
+          <Button
+            variant={!filterProvider ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilterProvider(null)}
+            className={!filterProvider ? 'bg-primary' : ''}
+          >
+            All Providers
+          </Button>
+          {providers.map(provider => (
+            <Button
+              key={provider}
+              variant={filterProvider === provider ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilterProvider(filterProvider === provider ? null : provider)}
+              className={filterProvider === provider ? 'bg-primary' : ''}
+            >
+              {provider}
+            </Button>
+          ))}
+
+          <div className="ml-auto">
+            <Button
+              variant={showUpcoming ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowUpcoming(!showUpcoming)}
+              className={showUpcoming ? 'bg-primary' : ''}
+            >
+              {showUpcoming ? 'All Games' : 'Show Upcoming'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Games Display */}
+      {gamesByProvider.length > 0 ? (
+        <div className="space-y-8">
+          {gamesByProvider.map(([provider, games]) => (
+            <div key={provider} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">{provider}</h2>
+                  <p className="text-sm text-gray-400">{games.length} games</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+                {games.map((game) => (
+                  <GameCard
+                    key={game.id}
+                    game={game}
+                    onPlay={(gameId) => setSelectedGame(gameId)}
+                  />
                 ))}
-              </AnimatePresence>
-              
-              {/* Spinning Overlay */}
-              {isSpinning && (
-                <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none" />
-              )}
+              </div>
             </div>
           ))}
         </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-gray-400 text-lg">No games found matching your criteria</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterProvider(null);
+              setShowUpcoming(false);
+            }}
+            className="mt-4"
+          >
+            Clear Filters
+          </Button>
+        </div>
+      )}
 
-        {/* Win Lines Visualization (Simplified) */}
-        <div className="absolute top-1/2 left-0 right-0 h-1 bg-primary/20 -translate-y-1/2 pointer-events-none" />
-      </div>
+      {/* Game Popup */}
+      {selectedGame && (() => {
+        const game = allGames.find(g => String(g.id) === selectedGame);
+        if (!game) return null;
 
-      {/* Controls */}
-      <div className="bg-muted p-6 rounded-3xl border border-border flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="space-y-1">
-            <p className="text-xs font-bold text-muted-foreground uppercase">BET AMOUNT</p>
-            <div className="flex items-center gap-2">
-              {[10, 50, 100, 500].map(val => (
-                <Button 
-                  key={val}
-                  size="sm"
-                  variant={bet === val ? 'default' : 'outline'}
-                  onClick={() => setBet(val)}
-                  className="font-bold"
-                >
-                  {val}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
+        const casinoGame = {
+          id: game.id,
+          name: game.title,
+          provider: game.provider,
+          thumbnail: game.image,
+          costPerPlay: 0.01,
+          type: 'slots' as const,
+          gameUrl: game.game_url || undefined,
+        };
 
-        <Button 
-          size="lg"
-          onClick={handleSpin}
-          disabled={isSpinning}
-          className={cn(
-            "w-full md:w-64 h-16 text-2xl font-black italic tracking-wider transition-all shadow-lg shadow-primary/20",
-            isSpinning ? "opacity-50" : "hover:scale-105"
-          )}
-        >
-          {isSpinning ? 'SPINNING...' : 'SPIN'}
-        </Button>
-      </div>
-
-      {/* Paytable Preview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 bg-muted/30 rounded-xl border border-border text-center">
-          <p className="text-4xl mb-2">7️⃣7️⃣7️⃣</p>
-          <p className="text-xs font-bold text-muted-foreground uppercase">100x Bet</p>
-        </div>
-        <div className="p-4 bg-muted/30 rounded-xl border border-border text-center">
-          <p className="text-4xl mb-2">💎💎💎</p>
-          <p className="text-xs font-bold text-muted-foreground uppercase">50x Bet</p>
-        </div>
-        <div className="p-4 bg-muted/30 rounded-xl border border-border text-center">
-          <p className="text-4xl mb-2">🔔🔔🔔</p>
-          <p className="text-xs font-bold text-muted-foreground uppercase">10x Bet</p>
-        </div>
-        <div className="p-4 bg-muted/30 rounded-xl border border-border flex items-center justify-center gap-2">
-          <Info className="w-5 h-5 text-muted-foreground" />
-          <p className="text-xs font-bold text-muted-foreground uppercase">View Full Paytable</p>
-        </div>
-      </div>
+        return (
+          <GamePopup
+            game={casinoGame as any}
+            onClose={() => setSelectedGame(null)}
+          />
+        );
+      })()}
     </div>
   );
-};
-
-export default Slots;
+}

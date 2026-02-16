@@ -1,5 +1,20 @@
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import path from "path";
+import fs from "fs";
+
+// Plugin to copy schema.sql
+function copySchemaPlugin(): Plugin {
+  return {
+    name: "copy-schema",
+    apply: "build",
+    writeBundle() {
+      const schemaSource = path.resolve(__dirname, "server/db/schema.sql");
+      const schemaDest = path.resolve(__dirname, "dist/server/schema.sql");
+      fs.copyFileSync(schemaSource, schemaDest);
+      console.log("✓ Copied schema.sql to dist/server/");
+    },
+  };
+}
 
 // Server build configuration
 export default defineConfig({
@@ -41,6 +56,7 @@ export default defineConfig({
     minify: false, // Keep readable for debugging
     sourcemap: true,
   },
+  plugins: [copySchemaPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./client"),
