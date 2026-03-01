@@ -51,10 +51,11 @@ export const handleRegister: RequestHandler = async (req, res) => {
       player: result.player
     });
   } catch (error) {
-    console.error('[Auth] Registration error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[Auth] Registration error:', errorMessage, error);
     res.status(500).json({
       success: false,
-      error: 'Registration failed'
+      error: errorMessage || 'Registration failed'
     });
   }
 };
@@ -92,10 +93,11 @@ export const handleLogin: RequestHandler = async (req, res) => {
       player: result.player
     });
   } catch (error) {
-    console.error('[Auth] Login error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[Auth] Login error:', errorMessage, error);
     res.status(500).json({
       success: false,
-      error: 'Login failed'
+      error: errorMessage || 'Login failed'
     });
   }
 };
@@ -166,10 +168,11 @@ export const handleAdminLogin: RequestHandler = async (req, res) => {
       isSitewideAdmin: !!playerProfile
     });
   } catch (error) {
-    console.error('[Auth] Admin login error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[Auth] Admin login error:', errorMessage, error);
     res.status(500).json({
       success: false,
-      error: 'Admin login failed'
+      error: errorMessage || 'Admin login failed'
     });
   }
 };
