@@ -660,8 +660,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   resolved_at TIMESTAMP
 );
 
--- Drop view if it exists (from older schema version)
-DROP VIEW IF EXISTS ticket_messages CASCADE;
+-- Drop ticket_messages if it exists (could be view or table from older schema)
+DROP TABLE IF EXISTS ticket_messages CASCADE;
 
 CREATE TABLE IF NOT EXISTS ticket_messages (
   id SERIAL PRIMARY KEY,
